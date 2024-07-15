@@ -284,14 +284,14 @@ class CoordAtt(nn.Module):
         self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
         self.bn1 = nn.BatchNorm2d(mip)
         self.act = h_swish()
-        
+
         self.conv_h = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
         self.conv_w = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
-        
+
 
     def forward(self, x):
         identity = x
-        
+
         n,c,h,w = x.size()
         x_h = self.pool_h(x)
         x_w = self.pool_w(x).permute(0, 1, 3, 2)
@@ -299,8 +299,8 @@ class CoordAtt(nn.Module):
         y = torch.cat([x_h, x_w], dim=2)
         y = self.conv1(y)
         y = self.bn1(y)
-        y = self.act(y) 
-        
+        y = self.act(y)
+
         x_h, x_w = torch.split(y, [h, w], dim=2)
         x_w = x_w.permute(0, 1, 3, 2)
 
@@ -314,20 +314,20 @@ class GlobalChannelAttention(nn.Module):
     def __init__(self, feature_map_size, kernel_size):
         super().__init__()
         assert (kernel_size%2 == 1), "Kernel size must be odd"
-        
+
         self.conv_q = nn.Conv1d(1, 1, kernel_size, 1, padding=(kernel_size-1)//2)
         self.conv_k = nn.Conv1d(1, 1, kernel_size, 1, padding=(kernel_size-1)//2)
         self.GAP = nn.AvgPool2d(feature_map_size)
-        
+
     def forward(self, x):
         N, C, H, W = x.shape
-        
+
         query = key = self.GAP(x).reshape(N, 1, C)
         query = self.conv_q(query).sigmoid()
         key = self.conv_q(key).sigmoid().permute(0, 2, 1)
         query_key = torch.bmm(key, query).reshape(N, -1)
         query_key = query_key.softmax(-1).reshape(N, C, C)
-        
+
         value = x.permute(0, 2, 3, 1).reshape(N, -1, C)
         att = torch.bmm(value, query_key).permute(0, 2, 1)
         att = att.reshape(N, C, H, W)
@@ -335,34 +335,34 @@ class GlobalChannelAttention(nn.Module):
 class GlobalSpatialAttention(nn.Module):
     def __init__(self, in_channels, num_reduced_channels):
         super().__init__()
-        
+
         self.conv1x1_q = nn.Conv2d(in_channels, num_reduced_channels, 1, 1)
         self.conv1x1_k = nn.Conv2d(in_channels, num_reduced_channels, 1, 1)
         self.conv1x1_v = nn.Conv2d(in_channels, num_reduced_channels, 1, 1)
         self.conv1x1_att = nn.Conv2d(num_reduced_channels, in_channels, 1, 1)
-        
+
     def forward(self, feature_maps, global_channel_output):
         query = self.conv1x1_q(feature_maps)
         N, C, H, W = query.shape
         query = query.reshape(N, C, -1)
         key = self.conv1x1_k(feature_maps).reshape(N, C, -1)
-        
+
         query_key = torch.bmm(key.permute(0, 2, 1), query)
         query_key = query_key.reshape(N, -1).softmax(-1)
         query_key = query_key.reshape(N, int(H*W), int(H*W))
         value = self.conv1x1_v(feature_maps).reshape(N, C, -1)
         att = torch.bmm(value, query_key).reshape(N, C, H, W)
         att = self.conv1x1_att(att)
-        
+
         return (global_channel_output * att) + global_channel_output
 class LocalChannelAttention(nn.Module):
     def __init__(self, feature_map_size, kernel_size):
         super().__init__()
         assert (kernel_size%2 == 1), "Kernel size must be odd"
-        
+
         self.conv = nn.Conv1d(1, 1, kernel_size, 1, padding=(kernel_size-1)//2)
         self.GAP = nn.AvgPool2d(feature_map_size)
-    
+
     def forward(self, x):
         N, C, H, W = x.shape
         att = self.GAP(x).reshape(N, 1, C)
@@ -377,7 +377,7 @@ class LocalSpatialAttention(nn.Module):
         self.dilated_conv3x3 = nn.Conv2d(num_reduced_channels, num_reduced_channels, 3, 1, padding=1)
         self.dilated_conv5x5 = nn.Conv2d(num_reduced_channels, num_reduced_channels, 3, 1, padding=2, dilation=2)
         self.dilated_conv7x7 = nn.Conv2d(num_reduced_channels, num_reduced_channels, 3, 1, padding=3, dilation=3)
-        
+
     def forward(self, feature_maps, local_channel_output):
         att = self.conv1x1_1(feature_maps)
         d1 = self.dilated_conv3x3(att)
@@ -386,9 +386,9 @@ class LocalSpatialAttention(nn.Module):
         att = torch.cat((att, d1, d2, d3), dim=1)
         att = self.conv1x1_2(att)
         return (local_channel_output * att) + local_channel_output
-#thank for 
+#thank for
 class GLAM(nn.Module):
-    
+
     def __init__(self, in_channels, num_reduced_channels=32, feature_map_size=20, kernel_size=1):
         '''
         Song, C. H., Han, H. J., & Avrithis, Y. (2022). All the attention you need: Global-local, spatial-channel attention for image retrieval. In Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision (pp. 2754-2763).
@@ -419,28 +419,28 @@ class GLAM(nn.Module):
         fused_feature_maps = (all_feature_maps * weights).sum(1)
         return fused_feature_maps
 
-# class depthwise_separable_conv(nn.Module):
-#     def __init__(self, nin, nout, kernel_size = 3, padding = 1, bias=False):
-#         super(depthwise_separable_conv, self).__init__()
-#         self.depthwise = nn.Conv2d(nin, nin, kernel_size=kernel_size, padding=padding, groups=nin, bias=bias)
-#         self.pointwise = nn.Conv2d(nin, nout, kernel_size=1, bias=bias)
-
-#     def forward(self, x):
-#         out = self.depthwise(x)
-#         out = self.pointwise(out)
-#         return out
-
 class depthwise_separable_conv(nn.Module):
-    def __init__(self, nin, nout, kernel_size = 3, padding = 1, alpha = 0.75, bias=False):
+    def __init__(self, nin, nout, kernel_size = 3, padding = 1, bias=False):
         super(depthwise_separable_conv, self).__init__()
-        self.depthwise = nn.Conv2d(nin, int(nin * alpha), kernel_size=kernel_size, padding=padding, groups=int(nin * alpha), bias=bias)
-        self.pointwise = nn.Conv2d(int(nin * alpha), int(nout * alpha), kernel_size=1, bias=bias)
+        self.depthwise = nn.Conv2d(nin, nin, kernel_size=kernel_size, padding=padding, groups=nin, bias=bias)
+        self.pointwise = nn.Conv2d(nin, nout, kernel_size=1, bias=bias)
 
     def forward(self, x):
         out = self.depthwise(x)
         out = self.pointwise(out)
         return out
-    
+
+# class depthwise_separable_conv(nn.Module):
+#     def __init__(self, nin, nout, kernel_size = 3, padding = 1, alpha = 0.75, bias=False):
+#         super(depthwise_separable_conv, self).__init__()
+#         self.depthwise = nn.Conv2d(nin, int(nin * alpha), kernel_size=kernel_size, padding=padding, groups=int(nin * alpha), bias=bias)
+#         self.pointwise = nn.Conv2d(int(nin * alpha), int(nout * alpha), kernel_size=1, bias=bias)
+#
+#     def forward(self, x):
+#         out = self.depthwise(x)
+#         out = self.pointwise(out)
+#         return out
+
 class SpectralFeatureAdaptation(nn.Module):
     def __init__(self,c1):
         super().__init__()
@@ -448,7 +448,7 @@ class SpectralFeatureAdaptation(nn.Module):
         self.conv2= nn.Conv3d(3, 16, (3,5,5), stride=1, padding='same') ##in=4 if edge info used
         self.conv3= nn.Conv3d(3, 16, (3,7,7), stride=1, padding='same') ##in=4 if edge info used
         self.conv4= nn.Conv3d(48, 3, 3, stride=1, padding='same')
-   
+
     def forward(self, input):
 
         ba,ch,dim1,dim2=list(input.size())
@@ -474,7 +474,7 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
 class Conv(nn.Module):
     # Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)
     default_act = nn.SiLU()  # default activation
-    
+
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
         super().__init__()
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
@@ -671,7 +671,7 @@ class ConvTranspose(nn.Module):
     def forward(self, x):
         return self.act(self.bn(self.conv_transpose(x)))
 
-#Samuel update function Spectral Feature Adaptation 
+#Samuel update function Spectral Feature Adaptation
 
 
 
@@ -871,7 +871,7 @@ class SPP(nn.Module):
             warnings.simplefilter('ignore')  # suppress torch 1.9.0 max_pool2d() warning
             return self.cv2(torch.cat([x] + [m(x) for m in self.m], 1))
 
-        
+
 class ASPP(torch.nn.Module):
 
     def __init__(self, in_channels, out_channels):
@@ -951,8 +951,8 @@ class SPPF(nn.Module):
 
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
-    
-    
+
+
 class ReOrg(nn.Module):
     # yolo
     def __init__(self):
@@ -1007,17 +1007,17 @@ class Shortcut(nn.Module):
 
     def forward(self, x):
         return x[0]+x[1]
-    
-    
+
+
 class Silence(nn.Module):
     def __init__(self):
         super(Silence, self).__init__()
-    def forward(self, x):    
+    def forward(self, x):
         return x
 
 
-##### GELAN #####        
-        
+##### GELAN #####
+
 class SPPELAN(nn.Module):
     # spp-elan
     def __init__(self, c1, c2, c3):  # ch_in, ch_out, number, shortcut, groups, expansion
@@ -1033,8 +1033,8 @@ class SPPELAN(nn.Module):
         y = [self.cv1(x)]
         y.extend(m(y[-1]) for m in [self.cv2, self.cv3, self.cv4])
         return self.cv5(torch.cat(y, 1))
-        
-        
+
+
 class RepNCSPELAN4(nn.Module):
     # csp-elan
     def __init__(self, c1, c2, c3, c4, c5=1):  # ch_in, ch_out, number, shortcut, groups, expansion
@@ -1065,7 +1065,7 @@ class ImplicitA(nn.Module):
         super(ImplicitA, self).__init__()
         self.channel = channel
         self.implicit = nn.Parameter(torch.zeros(1, channel, 1, 1))
-        nn.init.normal_(self.implicit, std=.02)        
+        nn.init.normal_(self.implicit, std=.02)
 
     def forward(self, x):
         return self.implicit + x
@@ -1076,7 +1076,7 @@ class ImplicitM(nn.Module):
         super(ImplicitM, self).__init__()
         self.channel = channel
         self.implicit = nn.Parameter(torch.ones(1, channel, 1, 1))
-        nn.init.normal_(self.implicit, mean=1., std=.02)        
+        nn.init.normal_(self.implicit, mean=1., std=.02)
 
     def forward(self, x):
         return self.implicit * x
