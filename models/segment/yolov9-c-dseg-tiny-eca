@@ -1,0 +1,146 @@
+# YOLOv9
+
+# parameters
+nc: 80  # number of classes
+depth_multiple: 1.0  # model depth multiple
+width_multiple: 1.0  # layer channel multiple
+#activation: nn.LeakyReLU(0.1)
+#activation: nn.ReLU()
+
+# anchors
+anchors: 3
+
+# gelan backbone
+backbone:
+  [
+    [-1, 1, Silence, []],  #0
+    [-1, 1, SpectralFeatureAdaptation, [3]], #1
+    [-1, 1, eca_layer, []], # after_eca: 2
+    # conv down
+    [-1, 1, Conv, [32, 3, 2]],  # 2-P1/2, after_eca: 3
+    [-1, 1, eca_layer, []], # after_eca: 4
+    # conv down
+    [-1, 1, Conv, [64, 3, 2]],  # 3-P2/4, after_eca: 5
+    [-1, 1, eca_layer, []], # after_eca: 6
+    # elan-1 block
+    [-1, 1, RepNCSPELAN4, [128, 64, 32, 1]],  # 4, after_eca: 7
+    [-1, 1, eca_layer, []], # after_eca: 8
+    # conv down
+    [-1, 1, ADown, [128]],  # 5-P3/8, after_eca: 9
+    [-1, 1, eca_layer, []], # after_eca: 10
+    # elan-2 block
+    [-1, 1, RepNCSPELAN4, [256, 128, 64, 1]],  # 6, after_eca: 11
+    [-1, 1, eca_layer, []], # after_eca: 12
+    # conv down
+    [-1, 1, ADown, [256]],  # 7-P4/16, after_eca: 13
+    [-1, 1, eca_layer, []], # after_eca: 14
+    # elan-2 block
+    [-1, 1, RepNCSPELAN4, [256, 256, 128, 1]],  # 8, after_eca: 15
+    [-1, 1, eca_layer, []], # after_eca: 16
+    # conv down
+    [-1, 1, ADown, [256]],   # 9-P5/32, after_eca: 17
+    [-1, 1, eca_layer, []], # after_eca: 18
+    [-1, 1, CBAM, [256]], #10, after_eca: 19
+    [-1, 1, eca_layer, []], # after_eca: 20
+    # elan-2 block
+    [-1, 1, RepNCSPELAN4, [256, 256, 128, 1]],  # 11, after_eca: 21
+    [-1, 1, eca_layer, []], # after_eca: 22
+  ]
+
+# YOLOv9 head
+head:
+  [
+    # elan-spp block
+    [-1, 1, SPPELAN, [256, 128]],  # 12, after_eca: 23
+    [-1, 1, eca_layer, []], # after_eca: 24
+    # up-concat merge
+    [-1, 1, nn.Upsample, [None, 2, 'nearest']], #13, after_eca: 25
+    [-1, 1, eca_layer, []], # after_eca: 26
+    [[-1, 16], 1, Concat, [1]],  # cat backbone P4 14, after_eca: 27
+    [-1, 1, eca_layer, []], # after_eca: 28
+    # elan-2 block
+    [-1, 1, depthwise_separable_conv, [256, 3, 1]],  # 15, after_eca: 29
+    [-1, 1, eca_layer, []], # after_eca: 30
+    # up-concat merge
+    [-1, 1, nn.Upsample, [None, 2, 'nearest']], #16, after_eca: 31
+    [-1, 1, eca_layer, []], # after_eca: 32
+    [[-1, 12], 1, Concat, [1]],  # cat backbone P3 17, after_eca: 33
+    [-1, 1, eca_layer, []], # after_eca: 34
+    # elan-2 block
+    [-1, 1, depthwise_separable_conv, [128, 3, 1]], # 18 (P3/8-small), after_eca: 35
+    [-1, 1, eca_layer, []], # after_eca: 36
+    # conv-down merge
+    [-1, 1, Conv, [128, 3, 2]], #19, after_eca: 37
+    [-1, 1, eca_layer, []], # after_eca: 38
+    [[-1, 30], 1, Concat, [1]],  # cat head P4 20, after_eca: 39
+    [-1, 1, eca_layer, []], # after_eca: 40
+    # elan-2 block
+    [-1, 1, depthwise_separable_conv, [256, 3, 1]], # 21 (P4/16-medium), after_eca: 41
+    [-1, 1, eca_layer, []], # after_eca: 42
+    # conv-down merge
+    [-1, 1, Conv, [256, 3, 2]], #22, after_eca: 43
+    [-1, 1, eca_layer, []], # after_eca: 44
+    [[-1, 24], 1, Concat, [1]],  # cat head P5 23, after_eca: 45
+    [-1, 1, eca_layer, []], # after_eca: 46
+    # elan-2 block
+    [-1, 1, depthwise_separable_conv, [256, 3, 1]],  # 24 (P5/32-large), after_eca: 47
+    [-1, 1, eca_layer, []], # after_eca: 48
+    # multi-level reversible auxiliary branch
+    # routing
+    [12, 1, CBLinear, [[128]]], # 25, after_eca: 49
+    [16, 1, CBLinear, [[128, 256]]], # 26, after_eca: 50
+    [22, 1, CBLinear, [[128, 256, 256]]], # 27, after_eca: 51
+    # conv down
+    [0, 1, Conv, [32, 3, 2]],  # 28-P1/2, after_eca: 52
+    [-1, 1, eca_layer, []], # after_eca: 53
+    # conv down
+    [-1, 1, Conv, [64, 3, 2]],  # 29-P2/4, after_eca: 54
+    [-1, 1, eca_layer, []], # after_eca: 55
+    # elan-1 block
+    [-1, 1, RepNCSPELAN4, [128, 64, 32, 1]],  # 30, after_eca: 56
+    [-1, 1, eca_layer, []], # after_eca: 57
+    # conv down fuse
+    [-1, 1, Conv, [128, 3, 2]],  # 31-P3/8, after_eca: 58
+    [-1, 1, eca_layer, []], # after_eca: 59
+    [[49, 50, 51, -1], 1, CBFuse, [[0, 0, 0]]], # 32, after_eca: 60
+    [-1, 1, eca_layer, []], # after_eca: 61
+    [-1, 1, CoordAtt, [128, 128, ]], #33, after_eca: 62
+    [-1, 1, eca_layer, []], # after_eca: 63
+    # elan-2 block
+    [-1, 1, RepNCSPELAN4, [256, 128, 64, 1]],  # 34, after_eca: 64
+    [-1, 1, eca_layer, []], # after_eca: 65
+    # conv down fuse
+    [-1, 1, Conv, [256, 3, 2]],  # 35-P4/16, after_eca: 66
+    [-1, 1, eca_layer, []], # after_eca: 67
+    [[50, 51, -1], 1, CBFuse, [[1, 1]]], # 36, after_eca: 68
+    [-1, 1, eca_layer, []], # after_eca: 69
+    [-1, 1, CoordAtt, [256, 256, ]], #37, after_eca: 70
+    [-1, 1, eca_layer, []], # after_eca: 71
+    # elan-2 block
+    [-1, 1, RepNCSPELAN4, [256, 256, 128, 1]],  # 38, after_eca: 72
+    [-1, 1, eca_layer, []], # after_eca: 73
+    # conv down fuse
+    [-1, 1, Conv, [256, 3, 2]],  # 39-P5/32, after_eca: 74
+    [-1, 1, eca_layer, []], # after_eca: 75
+    [[51, -1], 1, CBFuse, [[2]]], # 40, after_eca: 76
+    [-1, 1, eca_layer, []], # after_eca: 77
+    [-1, 1, CoordAtt, [256, 256, ]], #41, after_eca: 78
+    [-1, 1, eca_layer, []], # after_eca: 79
+    # elan-2 block
+    [-1, 1, RepNCSPELAN4, [256, 256, 128, 1]],  # 42, after_eca: 80
+    [-1, 1, eca_layer, []], # after_eca: 81
+    [59, 1, RepNCSPELAN4, [256, 128, 64, 2]],  # 43, after_eca: 82
+    [-1, 1, eca_layer, []], # after_eca: 83
+    [-1, 1, nn.Upsample, [None, 2, 'nearest']], # 44, after_eca: 84
+    [-1, 1, eca_layer, []], # after_eca: 85
+    [-1, 1, Conv, [128, 3, 1]], # 45, after_eca: 86
+    [-1, 1, eca_layer, []], # after_eca: 87
+    [32, 1, RepNCSPELAN4, [128, 128, 64, 2]],  # 46, after_eca: 88
+    [-1, 1, eca_layer, []], # after_eca: 89
+    [-1, 1, nn.Upsample, [None, 2, 'nearest']], # 47, after_eca: 90
+    [-1, 1, eca_layer, []], # after_eca: 91
+    [-1, 1, Conv, [128, 3, 1]], # 48, after_eca: 92
+    [-1, 1, eca_layer, []], # after_eca: 93
+    # segment
+    [[65, 73, 81, 36, 42, 48, 87, 93], 1, DualDSegment, [nc, 32, 256]],  # Segment(P3, P4, P5), after_eca: 94
+  ]
